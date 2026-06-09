@@ -1,6 +1,7 @@
-datasets/
+dataset/
 __pycache__
 venv
 .venv
 test*
 training/
+archive.zip
