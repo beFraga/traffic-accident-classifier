@@ -2,7 +2,6 @@ import torch
 
 import time
 import pickle
-import numpy as np
 from tqdm import tqdm
 
 from cnn.network import AccidentClassifierNet, TransferResnet
@@ -166,18 +165,17 @@ class AccidentClassifier(BaseModel):
             params=self.net.parameters(), lr=self.learning_rate
         )
 
-        lr_scheduler = torch.optim.lr_scheduler.StepLR(
-            self.optimizer,
-            parameters["lr_decay_every_n_epoch"],
-            gamma=parameters["lr_decay_rate"],
-        )
+        # NOTE: use a single LR scheduler. Stacking StepLR + Cosine on the same
+        # optimizer compounds their effects, collapsing the LR toward eta_min and
+        # stalling training (looks like a validation plateau). Cosine warm restarts
+        # are kept for their periodic "kicks"; StepLR is left available to swap in.
         lr_cosine = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
             self.optimizer,
             T_0=15,
             T_mult=2,
             eta_min=1e-6
         )
-        self.schedulers = [lr_scheduler, lr_cosine]
+        self.schedulers = [lr_cosine]
 
     def train_one_epoch(self):
         loss_numerics = {key: 0.0 for key in self.loss.key_names}
@@ -189,14 +187,10 @@ class AccidentClassifier(BaseModel):
 
             images = images.to(self.device)
             targets = targets.to(self.device)
-            
-            if np.random.rand() > 0.5:
-                lam = np.random.beta(0.2, 0.2)
-                batch_size = images.size()[0]
-                index = torch.randperm(batch_size).to(self.device)
 
-                images = lam * images + (1 - lam) * images[index, :]
-                targets = lam * targets + (1 - lam) * targets[index, :]
+            # Mixup disabled: linearly blending detection-style targets (objectness,
+            # one-hot class, and bbox coords) produces fractional objectness and
+            # averaged boxes that point at neither object, injecting label noise.
 
             predictions = self.net(images)
 

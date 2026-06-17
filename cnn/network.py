@@ -55,8 +55,14 @@ class TransferResnet(nn.Module):
         self.num_classes = num_classes
 
         resnet = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
-    
+
         self.backbone = nn.Sequential(*list(resnet.children())[:-2])
+
+        # Freeze the early/generic layers (conv1, bn1, relu, maxpool, layer1, layer2)
+        # to reduce trainable capacity and preserve pretrained low-level features,
+        # which curbs overfitting on a small dataset. Later layers stay trainable.
+        for param in self.backbone[:6].parameters():
+            param.requires_grad = False
 
         out_channels = 1 + self.num_classes + 4
 

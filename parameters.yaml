@@ -1,6 +1,6 @@
 accident_classifier:
   batch_size: 64
-  learning_rate: 0.00005
+  learning_rate: 0.0001
   max_epochs: 100
   patience_epochs: 20
   lr_decay_every_n_epoch: 15

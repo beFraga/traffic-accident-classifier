@@ -55,9 +55,21 @@ class TrafficGridDataset(Dataset):
             glob.glob(os.path.join(self.img_dir, "*.png"))
         )
         
+        # Photometric augmentation on the training split only (val/test stay
+        # deterministic). These augs don't move object positions, so the grid/bbox
+        # targets remain valid. Geometric augs (flips/crops) would require
+        # transforming the targets too, so they are intentionally left out here.
+        aug = []
+        if split == "train":
+            aug = [
+                transforms.ColorJitter(0.2, 0.2, 0.2, 0.1),
+                transforms.RandomApply([transforms.GaussianBlur(3)], p=0.2),
+            ]
+
         # Basic transformations to scale and tensorize images
         self.transform = transforms.Compose([
             transforms.Resize((img_size, img_size)),
+            *aug,
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
@@ -102,15 +114,14 @@ class TrafficGridDataset(Dataset):
                     grid_x = min(max(grid_x, 0), self.S - 1)
                     grid_y = min(max(grid_y, 0), self.S - 1)
                     
-                    # If the cell doesn't have an object yet, assign it
+                    # Keep one object per cell: the `== 0` guard skips cells that are
+                    # already occupied, but every annotation in the file is processed
+                    # (do NOT break here, or only the first object in the image is kept).
                     if target[grid_y, grid_x, 0] == 0:
                         target[grid_y, grid_x, 0] = 1.0  # Objectness = 1
                         target[grid_y, grid_x, 1 + severity_idx] = 1.0  # One-hot class
                         target[grid_y, grid_x, 6:10] = torch.tensor([x_center, y_center, w, h])
-                        
-                    # Stop processing after one object per cell to fit our tensor structure
-                    break 
-                    
+
         return image, target
 
 class TrafficDataManager:

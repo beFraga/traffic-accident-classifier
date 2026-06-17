@@ -16,7 +16,10 @@ class AccidentDetectionLoss:
     def __init__(self, num_classes=5):
         self.num_classes = num_classes
         self.key_names = ['total', 'objectness', 'classification', 'regression']
-        self.bce = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([7.0]))
+        # pos_weight should approximate (empty cells / occupied cells). On a 7x7=49
+        # grid with few accidents per image that ratio is ~40, not 7; too low makes
+        # the model lazy about detecting accidents. Tune to your dataset's density.
+        self.bce = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([40.0]))
         self.ce = nn.CrossEntropyLoss(label_smoothing=0.1)
         self.mse = nn.MSELoss()
 
@@ -40,7 +43,9 @@ class AccidentDetectionLoss:
             loss_cls = self.ce(pred_classes, true_classes)
             
             # 3. Bounding Box Coordinate Bounding Loss
-            pred_boxes = pred[mask][..., 1 + self.num_classes:]
+            # Squash raw box logits to [0, 1] (targets are normalized coords); without
+            # this the unbounded predictions produce large, noisy MSE gradients.
+            pred_boxes = torch.sigmoid(pred[mask][..., 1 + self.num_classes:])
             true_boxes = true[mask][..., 1 + self.num_classes:]
             loss_box = self.mse(pred_boxes, true_boxes)
             
