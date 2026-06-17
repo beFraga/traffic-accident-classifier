@@ -1,0 +1,26 @@
+Loss total (CNN):
+1.2501139491796494
+----- Starting AccidentClassifier Test -----
+Generated 1223 samples
+----- Evaluating Model Performance on Test Set -----
+
+================ TEST RESULTS ================
+Average Test Total Loss: 2.99625
+Average Test Objectness Loss: 0.85905
+Average Test Classification Loss: 1.05200
+Average Test Regression Loss: 0.02214
+==============================================
+
+=======================================================
+ NETWORK CLASSIFICATION ACCURACY REPORT
+=======================================================
+OVERALL CLASSIFICATION ACCURACY: 71.55%
+
+Accident Type      | Precision (Reliability) | Recall (Detection Rate)
+------------------------------------------------------------------------
+No accident        |  84.10%                 |  93.71%
+Minor              |  75.00%                 |  41.18%
+Moderate           |  46.15%                 |  36.36%
+Severe             |  39.13%                 |  61.36%
+Totaled Vehicle    |  86.96%                 |  52.63%
+===========================================================================
