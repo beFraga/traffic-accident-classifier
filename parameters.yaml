@@ -1,13 +1,20 @@
 accident_classifier:
-  batch_size: 64
+  batch_size: 64   # fits a 2GB MX450 (~525MB peak for ResNet18 @224); matches the round-1 baseline
   learning_rate: 0.0001
   max_epochs: 100
   patience_epochs: 20
   lr_decay_every_n_epoch: 15
   lr_decay_rate: 0.5
+  # weight_decay: tested (1e-4, 1e-2) and rejected -- see docs/round-3-adamw-and-ordinal-loss/results.txt.
+  # Left unset; optimizer is plain Adam. Re-add only if a future change makes the
+  # overfit L2-addressable (it currently is not).
+  # Ordinal-neighbour soft labels for the classification loss (round-3 #2). Total
+  # mass moved off the true severity onto its immediate neighbours; replaces the
+  # old uniform label_smoothing=0.1. 0.0 -> hard one-hot CE.
+  neighbor_smoothing: 0.2
   num_classes: 5
   S: 7
-  # Classification class weighting (docs/classification-plateau-analysis.md #1 & #2).
+  # Classification class weighting (docs/round-2-class-weights/analysis.md #1 & #2).
   # mode: effective_number -> derive weights from real label frequencies at startup;
   #       manual           -> use the literal class_w vector below.
   class_weight_mode: effective_number

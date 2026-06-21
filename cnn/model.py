@@ -159,8 +159,16 @@ class AccidentClassifier(BaseModel):
             self.net = AccidentClassifierNet(num_classes=num_classes, S=S)
         self.net.to(self.device)
 
-        self.loss = AccidentDetectionLoss(num_classes=num_classes, class_w=self.params.get("class_w"))
+        self.loss = AccidentDetectionLoss(
+            num_classes=num_classes,
+            class_w=self.params.get("class_w"),
+            neighbor_smoothing=self.params.get("neighbor_smoothing", 0.0),
+        )
 
+        # Plain Adam. AdamW + weight_decay was tested (docs/round-3-adamw-and-ordinal-loss/results.txt,
+        # wd 1e-4 and 1e-2) and rejected: the classification train/val gap stayed
+        # frozen at ~+0.63 across a 100x decay range while accuracy trended down --
+        # the gap is a class-confusion ceiling, not L2-fixable overfit.
         self.optimizer = torch.optim.Adam(
             params=self.net.parameters(), lr=self.learning_rate
         )
