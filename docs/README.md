@@ -17,6 +17,8 @@ One directory per **round**. Each round holds two files:
 So the chain reads: `round-N/analysis.md` consumes `round-(N-1)/results.txt` and produces `round-N/results.txt`. Round 1's `analysis.md` diagnoses the original plateau.
 
 `prompts/` holds reusable session prompts (not part of the round narrative).
+[`variance-check.md`](variance-check.md) is a methodology study (3-seed noise floor)
+that re-frames how every round's deltas should be read.
 
 ## Scoreboard
 
@@ -29,7 +31,13 @@ GeForce MX450, ResNet18 transfer (`tp=1`), batch_size 64.
 | [1](round-1-mechanical-fixes/) | Mechanical fixes: single LR scheduler, removed label-loop `break`, LR→1e-4, color/blur aug, frozen early ResNet, `pos_weight=40`, sigmoid bbox, mixup off | **71.55%** | broke the plateau | kept |
 | [2](round-2-class-weights/) | Hand-picked `class_w` → frequency-derived effective-number weights | **75.84%** | Minor +23, Totaled +30 recall | kept |
 | [3](round-3-adamw-and-ordinal-loss/) #1 | Adam → AdamW + `weight_decay` (1e-4, 1e-2) | 74.39–75.42% | gap frozen ~+0.63, acc flat→down | **rejected** (overfit is a class-confusion ceiling, not L2-fixable) |
-| [3](round-3-adamw-and-ordinal-loss/) #2 | Uniform label smoothing → ordinal-neighbour soft labels (`neighbor_smoothing=0.2`) | 75.31% | **Moderate recall 27%→38% (+11)**, ordinal MAE 0.36 | kept |
+| [3](round-3-adamw-and-ordinal-loss/) #2 | Uniform label smoothing → ordinal-neighbour soft labels (`neighbor_smoothing=0.2`) | 75.31% (1 run) | Moderate recall +11 — **at the noise floor, not established** (see variance check) | kept (harmless; better error structure) |
+
+> **Noise floor** ([variance-check.md](variance-check.md), 3 seeds, fixed test set):
+> overall accuracy of the kept config is **77.2% ± 1.4** (single runs undersold it);
+> mid/rare-class recall (Moderate/Severe) swings **~9–10 pts from the seed alone**, so
+> single-run per-class deltas below that are noise. Judge future changes by multi-seed
+> mean ± sd.
 
 ## Current state of the code
 

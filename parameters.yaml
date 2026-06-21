@@ -14,6 +14,7 @@ accident_classifier:
   neighbor_smoothing: 0.2
   num_classes: 5
   S: 7
+  seed: 42                            # training-process RNG seed (init/shuffle/aug); override per-run with $TAC_SEED. Val/test split has its own fixed seed.
   # Classification class weighting (docs/round-2-class-weights/analysis.md #1 & #2).
   # mode: effective_number -> derive weights from real label frequencies at startup;
   #       manual           -> use the literal class_w vector below.

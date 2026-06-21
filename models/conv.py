@@ -3,10 +3,14 @@ from cnn.model import AccidentClassifier
 
 import torch
 import sys
+import os
+import random
 import time
 import yaml
 from pathlib import Path
 
+#import matplotlib
+#matplotlib.use("Agg")  # non-interactive: save plots to files so unattended/overnight runs never block on a GUI window
 import matplotlib.pyplot as plt
 import numpy as np
 import torch.nn.functional as F
@@ -65,8 +69,27 @@ def resolve_class_weights():
     return weights
 
 
+def set_seed(seed):
+    """Seed the training-process RNGs (head init, train-loader shuffle, photometric
+    augmentation). The val/test split has its own fixed generator (seed 42 in
+    TrafficDataManager), so the held-out eval set is unaffected -- this isolates
+    training stochasticity for the variance check. The seed comes from $TAC_SEED if
+    set, else the ``seed`` key in parameters.yaml."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
+def resolve_seed():
+    return int(os.environ.get("TAC_SEED", params.get("seed", 42)))
+
+
 def train():
     start_time = time.time()
+    seed = resolve_seed()
+    set_seed(seed)
+    print(f"----- Random seed: {seed} -----")
     print("----- Starting AccidentClassifier Train -----")
     print("----- Generating Traffic Accidents Dataset -----")
     print(f"----- Running on device: {device} --------")
@@ -86,13 +109,17 @@ def train():
     print(time.time() - start_time)
     print("Loss total (CNN):")
     print(model.history["train_loss_total"][-1])
+    plt.figure()
     plt.plot(model.history["train_loss_total"])
     plt.plot(model.history["validation_loss_total"])
     plt.title("Loss")
     plt.legend(["Train", "Validation"], loc="upper right")
     plt.xlabel("Epoch")
     plt.ylabel("Loss Score")
-    plt.show()
+    loss_curve_path = SAVE_DIR / "loss_curve.png"
+    plt.savefig(loss_curve_path, dpi=110)
+    plt.close()
+    print(f"Saved loss curve → {loss_curve_path}")
     run(dataset=dataset)
 
 
@@ -229,7 +256,10 @@ def plot_traffic_confusion_matrix(model, loader, device, conf_threshold=0.5):
     plt.title(f'Accident Type Confusion Matrix (Accuracy: {overall_class_accuracy * 100:.1f}%)', fontsize=12, pad=15)
     plt.xlabel('Predicted Accident Category')
     plt.ylabel('Actual Accident Category (Ground Truth)')
-    plt.show()
+    cm_path = SAVE_DIR / "confusion_matrix.png"
+    plt.savefig(cm_path, dpi=110)
+    plt.close()
+    print(f"Saved confusion matrix → {cm_path}")
 
 switch = {
     "train": train,
