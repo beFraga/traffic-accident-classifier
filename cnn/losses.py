@@ -13,7 +13,7 @@ class BaseLoss(object):
 
 
 class AccidentDetectionLoss:
-    def __init__(self, num_classes=5):
+    def __init__(self, num_classes=5, class_w=None):
         self.num_classes = num_classes
         self.key_names = ['total', 'objectness', 'classification', 'regression']
         # pos_weight should approximate (empty cells / occupied cells). On a 7x7=49
@@ -23,7 +23,13 @@ class AccidentDetectionLoss:
         self.ce = nn.CrossEntropyLoss(label_smoothing=0.1)
         self.mse = nn.MSELoss()
 
-        self.class_w = torch.tensor([4.0, 0.6, 1.0, 6.5, 0.6])
+        # Per-class CE weights. These are NOT hand-picked here: they are derived from
+        # real label frequencies and passed in by models/conv.py (see
+        # docs/classification-plateau-analysis.md #1). Falls back to uniform when
+        # nothing is supplied so the loss is still usable in isolation.
+        if class_w is None:
+            class_w = [1.0] * num_classes
+        self.class_w = torch.tensor(class_w, dtype=torch.float32)
 
     def __call__(self, pred, true):
         # 1. Objectness Localization Loss

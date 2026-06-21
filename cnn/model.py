@@ -159,7 +159,7 @@ class AccidentClassifier(BaseModel):
             self.net = AccidentClassifierNet(num_classes=num_classes, S=S)
         self.net.to(self.device)
 
-        self.loss = AccidentDetectionLoss(num_classes=num_classes)
+        self.loss = AccidentDetectionLoss(num_classes=num_classes, class_w=self.params.get("class_w"))
 
         self.optimizer = torch.optim.Adam(
             params=self.net.parameters(), lr=self.learning_rate

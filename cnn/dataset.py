@@ -7,6 +7,71 @@ import glob
 from PIL import Image
 import torchvision.transforms as transforms
 
+def count_occupied_cell_classes(base_path, S=7, num_classes=5, splits=("train", "val")):
+    """Count class frequencies the way ``AccidentDetectionLoss`` sees them.
+
+    Classification loss runs only on *occupied grid cells*, and ``TrafficGridDataset``
+    keeps one object per cell (first annotation wins). So we replicate that exact
+    bucketing here rather than counting raw label lines -- otherwise the derived
+    weights would be skewed by objects that the loss never actually scores.
+
+    Returns a ``np.int64`` array of length ``num_classes`` (occupied-cell counts).
+    """
+    counts = np.zeros(num_classes, dtype=np.int64)
+    for split in splits:
+        label_dir = os.path.join(str(base_path), "labels", split)
+        if not os.path.isdir(label_dir):
+            continue
+        for label_path in glob.glob(os.path.join(label_dir, "*.txt")):
+            occupied = {}  # (grid_y, grid_x) -> class_idx, first object per cell wins
+            with open(label_path, "r") as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) != 5:
+                        continue
+                    cls = int(parts[0])
+                    x_center, y_center = float(parts[1]), float(parts[2])
+                    grid_x = min(max(int(x_center * S), 0), S - 1)
+                    grid_y = min(max(int(y_center * S), 0), S - 1)
+                    if (grid_y, grid_x) not in occupied:
+                        occupied[(grid_y, grid_x)] = cls
+            for cls in occupied.values():
+                if 0 <= cls < num_classes:
+                    counts[cls] += 1
+    return counts
+
+
+def effective_number_weights(counts, beta=0.999, max_ratio=10.0, class0_cap=None):
+    """Class-balanced "effective number" weights (Cui et al., 2019).
+
+    ``w_c = (1 - beta) / (1 - beta**n_c)``, then mean-normalized to 1 so the overall
+    classification-loss scale is unchanged. ``class0_cap`` clamps the "No accident"
+    weight (analysis recommendation #2); ``max_ratio`` caps the spread so a rare class
+    can't dominate the gradient. Classes absent from occupied cells get the mean weight.
+
+    Returns a plain ``list[float]`` of length ``len(counts)``.
+    """
+    counts = np.asarray(counts, dtype=np.float64)
+    n = len(counts)
+    seen = counts > 0
+
+    weights = np.ones(n, dtype=np.float64)
+    if seen.any():
+        eff_num = 1.0 - np.power(beta, counts[seen])
+        weights[seen] = (1.0 - beta) / eff_num
+        weights[~seen] = weights[seen].mean()  # unseen class -> neutral weight
+        weights = weights / weights.mean()      # mean-normalize to 1
+
+    if class0_cap is not None and n > 0:
+        weights[0] = min(weights[0], float(class0_cap))
+
+    if max_ratio is not None:
+        floor = weights[weights > 0].min() if (weights > 0).any() else 1.0
+        weights = np.minimum(weights, floor * float(max_ratio))
+
+    return weights.tolist()
+
+
 class BaseDataset(Dataset):
     def __init__(self, dataset: TensorDataset, train_ratio=0.7, val_ratio=0.2, batch_size=32):
         super().__init__()

@@ -1,4 +1,4 @@
-from cnn.dataset import TrafficDataManager
+from cnn.dataset import TrafficDataManager, count_occupied_cell_classes, effective_number_weights
 from cnn.model import AccidentClassifier
 
 import torch
@@ -28,6 +28,42 @@ params = parameters["accident_classifier"]
 
 SAVE_DIR = WORKDIR / "training"
 
+CLASS_NAMES = ["No accident", "Minor", "Moderate", "Severe", "Totaled Vehicle"]
+
+
+def resolve_class_weights():
+    """Resolve the per-class CE weights for the loss, reading config by key from
+    ``parameters.yaml`` (per the project convention -- never hardcoded in cnn/).
+
+    ``class_weight_mode: manual`` uses the literal ``class_w`` vector; otherwise the
+    weights are derived from real label frequencies at startup. Falls back to uniform
+    when no labels are on disk (e.g. dataset/ not yet restored) so training/eval can
+    still construct the loss.
+    """
+    mode = params.get("class_weight_mode", "effective_number")
+
+    if mode == "manual":
+        manual = params.get("class_w")
+        if manual is None:
+            raise ValueError("class_weight_mode: manual requires a class_w vector in parameters.yaml")
+        return [float(w) for w in manual]
+
+    counts = count_occupied_cell_classes(DATASET_PATH, S=params["S"], num_classes=params["num_classes"])
+    if counts.sum() == 0:
+        print("⚠ No label files found under dataset/labels — falling back to uniform class weights.")
+        return [1.0] * params["num_classes"]
+
+    weights = effective_number_weights(
+        counts,
+        beta=params.get("class_weight_beta", 0.999),
+        max_ratio=params.get("class_weight_max_ratio", 10.0),
+        class0_cap=params.get("no_accident_weight_cap"),
+    )
+    print("----- Class weights (effective-number, occupied-cell frequencies) -----")
+    for name, c, w in zip(CLASS_NAMES, counts.tolist(), weights):
+        print(f"  {name:<16} count={c:<7} weight={w:.3f}")
+    return weights
+
 
 def train():
     start_time = time.time()
@@ -42,6 +78,7 @@ def train():
     )
 
     print(f"Generated {len(dataset)} samples")
+    params["class_w"] = resolve_class_weights()
     model = AccidentClassifier(SAVE_DIR, dataset, params, device=device, early_stopping=True, tp=1)
     model.train()
 
@@ -72,6 +109,7 @@ def run(dataset=None):
         )
 
     print(f"Generated {len(dataset)} samples")
+    params["class_w"] = resolve_class_weights()
     model = AccidentClassifier(SAVE_DIR, dataset, params, device=device, tp=1)
     model.load_network()
 

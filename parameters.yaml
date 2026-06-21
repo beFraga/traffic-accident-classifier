@@ -7,3 +7,11 @@ accident_classifier:
   lr_decay_rate: 0.5
   num_classes: 5
   S: 7
+  # Classification class weighting (docs/classification-plateau-analysis.md #1 & #2).
+  # mode: effective_number -> derive weights from real label frequencies at startup;
+  #       manual           -> use the literal class_w vector below.
+  class_weight_mode: effective_number
+  class_weight_beta: 0.999          # effective-number smoothing; ->1.0 = stronger reweighting
+  class_weight_max_ratio: 10        # cap heaviest/lightest weight spread
+  no_accident_weight_cap: 1.0       # clamp the over-represented "No accident" class (#2)
+  class_w: null                     # manual override; only used when class_weight_mode: manual
