@@ -7,7 +7,7 @@
 You are working on a YOLO-style **grid classifier** for traffic-accident severity
 (`cnn/`, orchestrated by `models/conv.py`, hyperparameters in `parameters.yaml`).
 Read `CLAUDE.md` first for the architecture and conventions, then read
-`docs/training-plateau-analysis.md` — that was a prior analysis and **its
+`docs/round-1-mechanical-fixes/analysis.md` — that was a prior analysis and **its
 recommendations are already implemented in the code** (single cosine scheduler,
 `break` removed from the label loop, LR raised to `1e-4`, color/blur augmentation,
 frozen early ResNet layers, `pos_weight=40`, sigmoid on bbox outputs, mixup
@@ -16,7 +16,7 @@ optimizer in `cnn/model.py` is still plain `Adam`).
 
 ## Current state (after those fixes)
 
-Latest run (`docs/output-after-round1.txt`):
+Latest run (`docs/round-1-mechanical-fixes/results.txt`):
 - Overall classification accuracy rose from ~50% to **71.55%**.
 - Test loss breakdown: objectness 0.859, **classification 1.052** (dominant),
   regression 0.022.

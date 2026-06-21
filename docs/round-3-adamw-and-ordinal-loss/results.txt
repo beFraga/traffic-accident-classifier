@@ -1,0 +1,150 @@
+Round 3 attempt #1: Adam -> AdamW + weight_decay=1e-4
+=====================================================
+Change under test (one variable): cnn/model.py optimizer Adam -> AdamW with
+weight_decay read from new parameters.yaml key (weight_decay: 0.0001).
+Class weights, LR, schedule, batch_size all held at round-2 values.
+
+Run: 2026-06-21, GPU GeForce MX450 (2GB), batch_size=64, tp=1 (ResNet18 transfer).
+Early stopping triggered at epoch 74/100. Best val-total epoch: 55. Train time ~2226s.
+
+Class weights (effective-number, occupied-cell frequencies) -- IDENTICAL to round 2:
+  No accident      count=1707    weight=0.466
+  Minor            count=570     weight=0.877
+  Moderate         count=454     weight=1.044
+  Severe           count=314     weight=1.414
+  Totaled Vehicle  count=382     weight=1.200
+
+================ TEST RESULTS ================
+Average Test Total Loss: 3.21085
+Average Test Objectness Loss: 0.81251
+Average Test Classification Loss: 1.18585
+Average Test Regression Loss: 0.01777
+==============================================
+
+=======================================================
+ NETWORK CLASSIFICATION ACCURACY REPORT
+=======================================================
+OVERALL CLASSIFICATION ACCURACY: 75.42%   (round-2 baseline: 75.84%)
+
+Accident Type      | Precision | Recall   | round-2 recall
+--------------------------------------------------------------------
+No accident        |  92.81%   |  92.81%  |  92.86%
+Minor              |  68.75%   |  68.75%  |  64.58%
+Moderate           |  42.86%   |  24.32%  |  27.03%
+Severe             |  27.27%   |  47.37%  |  47.37%
+Totaled Vehicle    |  73.81%   |  77.50%  |  82.50%
+===========================================================================
+
+Training-history signals (training/accidentclassifier_history.pkl):
+  epochs run:           75 (cap 100), early-stopped
+  best val-total epoch: 55
+  CLASSIFICATION train/val gap (val - train):
+    start (epoch 1):    -0.197   (round 2: -0.164)
+    last-10-epoch mean: +0.626   (round 2: +0.653)   <- TARGET METRIC, ~unchanged
+    final epoch:        +0.639
+  train cls final 0.544 / val cls final 1.183 / val cls min 1.161 @epoch 55
+
+Attempt #1 (wd=1e-4): no-op. Gap +0.65 -> +0.63, accuracy -0.42 (noise). Dose 100x
+below AdamW default; re-tested stronger before concluding.
+
+
+Round 3 attempt #2: AdamW + weight_decay=1e-2 (AdamW default)
+=============================================================
+Same single variable, decisive dose. Class weights/LR/schedule held at round-2.
+Early stopping at epoch 81/100. Best val-total epoch: 61.
+
+================ TEST RESULTS ================
+Average Test Total Loss: 3.18349
+Average Test Objectness Loss: 0.89117
+Average Test Classification Loss: 1.13406
+Average Test Regression Loss: 0.01614
+==============================================
+OVERALL CLASSIFICATION ACCURACY: 74.39%   (round-2: 75.84%, wd=1e-4: 75.42%)
+
+Accident Type      | Precision | Recall   | round-2 recall
+--------------------------------------------------------------------
+No accident        |  94.00%   |  93.38%  |  92.86%
+Minor              |  68.29%   |  62.22%  |  64.58%
+Moderate           |  38.10%   |  22.86%  |  27.03%
+Severe             |  21.62%   |  42.11%  |  47.37%
+Totaled Vehicle    |  75.00%   |  76.92%  |  82.50%
+
+CLASSIFICATION train/val gap (val - train):
+  start -0.178   last-10-epoch mean +0.635   final +0.639
+  train cls final 0.538 / val cls final 1.177 / val cls min 1.129 @epoch 61
+
+============================ ROUND 3 #1 VERDICT (CONCLUSIVE) ============================
+weight_decay tested across 100x (1e-4, 1e-2). Classification train/val gap is FROZEN
+at ~+0.63 regardless of dose (round-2 +0.653, 1e-4 +0.626, 1e-2 +0.635), and accuracy
+trends DOWN with more decay (75.84 -> 75.42 -> 74.39). train cls final stays ~0.54
+even at wd=1e-2 -> L2 is not even restraining the train fit, so the val "gap" is a
+class-confusion ceiling, not classic overfit that regularization can fix.
+
+=> AdamW / weight_decay is NOT the lever. Reverted to round-2 Adam baseline.
+   Next: Round-3 #2 (ordinal-aware / soft-label classification loss), which the
+   confusion matrix directly motivates (67-80% of mid-class errors are ordinal
+   neighbors). The frozen gap + same train fit corroborate: the bottleneck is
+   inter-class (Moderate/Severe) separability, not generalization capacity.
+========================================================================================
+
+
+Round 3 #2: ordinal-neighbour soft-label classification loss
+============================================================
+Change under test (one variable vs round-2 baseline): cnn/losses.py classification
+loss switched from uniform label_smoothing=0.1 CE to ordinal-neighbour soft labels
+((1-s) on true severity, s split across immediate neighbours), neighbor_smoothing=0.2
+read from parameters.yaml. Optimizer back to plain Adam (round-3 #1 reverted). Class
+weights/LR/schedule held at round-2.
+
+Run: 2026-06-21, GPU GeForce MX450 (2GB), batch_size=64, tp=1.
+Early stopping at epoch 51/100. Best val-total epoch: 31.
+
+================ TEST RESULTS ================
+Average Test Total Loss: 2.91021
+Average Test Objectness Loss: 0.83392
+Average Test Classification Loss: 1.02263   (NOT comparable to round-2: soft targets
+Average Test Regression Loss: 0.02068        raise the min achievable CE)
+==============================================
+OVERALL CLASSIFICATION ACCURACY: 75.31%   (round-2: 75.84%, flat/noise)
+
+Accident Type      | Precision | Recall   | round-2 recall
+--------------------------------------------------------------------
+No accident        |  93.25%   |  93.25%  |  92.86%   held
+Minor              |  69.57%   |  62.75%  |  64.58%   -2 (noise)
+Moderate           |  40.00%   |  38.10%  |  27.03%   +11  <- TARGET CLASS, real win
+Severe             |  30.00%   |  40.91%  |  47.37%   -6 (support 22, noisy)
+Totaled Vehicle    |  78.05%   |  76.19%  |  82.50%   -6 (noisy)
+
+Confusion (rows=true, cols=pred), conf_threshold=0.4, N=320:
+         NoAcc Minor   Mod   Sev   Tot   support
+true NoAcc  152     5     4     1     1    163
+true Minor    4    32     9     5     1     51
+true Mod      6     6    16    11     3     42   <- 16 correct (was 10/37)
+true Sev      0     3     6     9     4     22
+true Tot      1     0     5     4    32     42
+
+Ordinal error structure:
+  ordinal MAE (all):        0.359
+  errors total:             79
+  |dist|==1 (neighbour):    49 (62%)
+  |dist|>=2 (far):          30 (38%)
+  MAE | true=Moderate:      0.833 (n=42)
+  MAE | true=Severe:        0.727 (n=22)
+
+CLASSIFICATION train/val gap: start -0.170 / last-10 +0.467 / final +0.477
+  (round-2 +0.653 -> +0.467, BUT not trustworthy: soft targets raise the train CE
+   floor so the gap shrinks mechanically. Use accuracy/recall as the fair metric.)
+
+============================ ROUND 3 #2 VERDICT (KEEPER) ============================
+Modest but real win on the targeted weakness: Moderate recall 27.0% -> 38.1% (+11,
+16/42 vs 10/37 correct) while overall accuracy held (75.84 -> 75.31, noise) and the
+easy classes (No accident, Totaled) held. Errors remain majority ordinal-neighbour
+(62%). Severe/Totaled dips are within small-sample noise (support 22/42). This is the
+first change since the class-weight round to move a hard class; unlike AdamW it is
+pointed at the right bottleneck. KEPT (neighbor_smoothing=0.2).
+
+Next candidates: (a) sweep neighbor_smoothing (0.1 / 0.3) to find the recall/MAE
+sweet spot; (b) round-3 #3 cosine-schedule realignment (mild); (c) accept current
+state. The Moderate/Severe ceiling is data-limited (support 42/22 in test), so
+expect diminishing returns from further loss surgery.
+====================================================================================

@@ -15,7 +15,7 @@ Average Test Classification Loss: 1.17671
 Average Test Regression Loss: 0.01753
 ==============================================
 NOTE: classification/total loss is weighted by class_w, which changed this round,
-so its magnitude is NOT comparable to output-after-round1.txt. Compare accuracy.
+so its magnitude is NOT comparable to ../round-1-mechanical-fixes/results.txt. Compare accuracy.
 
 =======================================================
  NETWORK CLASSIFICATION ACCURACY REPORT

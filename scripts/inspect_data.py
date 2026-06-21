@@ -1,5 +1,5 @@
 """
-Phase-0 evidence dump for docs/classification-plateau-analysis.md.
+Phase-0 evidence dump for docs/round-2-class-weights/analysis.md.
 
 The round-2 analysis gates most recommendations on three measurements that live
 with the data (not in the repo). This script prints all three in one shot so the

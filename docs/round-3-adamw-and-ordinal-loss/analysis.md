@@ -1,10 +1,10 @@
 # Class-Weight Results Analysis (Round 2 outcome → Round 3 plan)
 
 **Date:** 2026-06-21
-**Scope:** outcome of implementing recommendation **#1** from [`classification-plateau-analysis.md`](classification-plateau-analysis.md) — replacing the hand-picked `class_w` with weights derived from real label frequencies.
+**Scope:** outcome of implementing recommendation **#1** from [`../round-2-class-weights/analysis.md`](../round-2-class-weights/analysis.md) — replacing the hand-picked `class_w` with weights derived from real label frequencies.
 **Change under test (one variable):** `cnn/losses.py` `class_w` `[4.0, 0.6, 1.0, 6.5, 0.6]` → frequency-derived effective-number weights, computed at startup in `models/conv.py` and read via new `parameters.yaml` keys. Everything else (batch_size=64, LR, schedule, optimizer) held at the round-1 baseline.
 
-> **Data source:** all numbers below come from [`output-after-round2.txt`](output-after-round2.txt) — the test report, confusion matrix, and history signals from the 2026-06-21 run on the real Kaggle dataset (`marslanarshad/car-accidents-and-deformation-datasetannotated`), GPU GeForce MX450.
+> **Data source:** all numbers below come from [`../round-2-class-weights/results.txt`](../round-2-class-weights/results.txt) — the test report, confusion matrix, and history signals from the 2026-06-21 run on the real Kaggle dataset (`marslanarshad/car-accidents-and-deformation-datasetannotated`), GPU GeForce MX450.
 
 ---
 
@@ -73,7 +73,7 @@ Where the errors land:
 - **Moderate** errors: 18 of 27 go to adjacent severities (Minor 6 + Severe 12) = **67%**; only 6 leak to "No accident."
 - **Severe** errors: 8 of 10 go to neighbors (Moderate 5 + Totaled 3) = **80%**; **zero** to "No accident."
 
-This resolves the open sub-question from `classification-plateau-analysis.md` §Diagnosis: the middle classes confuse **with each other along the severity axis**, *not* with "No accident." The objectness gate is healthy ("No accident" precision 93%). → indicates **ordinal/soft-label loss (#3)**, not the gating fix (cutting `class_w[0]` / threshold sweep).
+This resolves the open sub-question from `../round-2-class-weights/analysis.md` §Diagnosis: the middle classes confuse **with each other along the severity axis**, *not* with "No accident." The objectness gate is healthy ("No accident" precision 93%). → indicates **ordinal/soft-label loss (#3)**, not the gating fix (cutting `class_w[0]` / threshold sweep).
 
 ### 4. History signals (newly measurable — the pickle now exists)
 
@@ -101,7 +101,7 @@ This resolves the open sub-question from `classification-plateau-analysis.md` §
 
 ### Recommended first move
 
-**#1 — AdamW + `weight_decay`.** Lowest-risk single change, directly targets the now-confirmed overfitting gap, and is the only remaining item from the original `training-plateau-analysis.md` Priority 3b. Then **#2 (ordinal/soft loss)** to attack the Moderate/Severe ceiling that the matrix isolates.
+**#1 — AdamW + `weight_decay`.** Lowest-risk single change, directly targets the now-confirmed overfitting gap, and is the only remaining item from the original `../round-1-mechanical-fixes/analysis.md` Priority 3b. Then **#2 (ordinal/soft loss)** to attack the Moderate/Severe ceiling that the matrix isolates.
 
 ---
 

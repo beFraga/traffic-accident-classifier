@@ -2,11 +2,11 @@
 
 **Date:** 2026-06-17
 **Scope:** `cnn/losses.py`, `cnn/model.py`, `parameters.yaml`, `models/conv.py` (plus `cnn/dataset.py` and `cnn/network.py` for context)
-**Symptom under investigation:** after the [round-1 fixes](training-plateau-analysis.md) accuracy rose ~50% → **71.55%**, but training loss keeps decreasing while **validation loss stays flat**. The stuck term is now isolated: **classification**, concentrated in the middle severity classes.
+**Symptom under investigation:** after the [round-1 fixes](../round-1-mechanical-fixes/analysis.md) accuracy rose ~50% → **71.55%**, but training loss keeps decreasing while **validation loss stays flat**. The stuck term is now isolated: **classification**, concentrated in the middle severity classes.
 
-> **Data source:** all numbers below come from `output-after-round1.txt` — the test report produced *after* the round-1 changes were implemented.
+> **Data source:** all numbers below come from `../round-1-mechanical-fixes/results.txt` — the test report produced *after* the round-1 changes were implemented.
 
-> **Predecessor:** every recommendation in `training-plateau-analysis.md` is already implemented in the code **except Priority 3b** (AdamW + weight decay). This document does not repeat those; it diagnoses what remains.
+> **Predecessor:** every recommendation in `../round-1-mechanical-fixes/analysis.md` is already implemented in the code **except Priority 3b** (AdamW + weight decay). This document does not repeat those; it diagnoses what remains.
 
 ---
 
@@ -14,7 +14,7 @@
 
 The plateau is **intrinsic to the classification head**, not a multi-task scale artifact. Two findings drive the conclusion:
 
-1. **Classification is already 70% of the total loss budget** (verified by recomputing the term-weighted total to match `output-after-round1.txt` exactly). The old worry that "objectness drowns out classification" is no longer true — the optimizer is spending most of its gradient on classification and *still* can't move val loss.
+1. **Classification is already 70% of the total loss budget** (verified by recomputing the term-weighted total to match `../round-1-mechanical-fixes/results.txt` exactly). The old worry that "objectness drowns out classification" is no longer true — the optimizer is spending most of its gradient on classification and *still* can't move val loss.
 2. **The hand-picked class weights point the wrong way.** The two worst-recall classes are *down-weighted*; two already-good classes carry the heaviest weights.
 
 **Highest-confidence single change:** replace the hand-picked `class_w` with weights **derived from real label frequencies** (and drop the inflated "No accident" weight). It is the only change supported by direct evidence in the current checkout, and it acts on the term that is provably 70% of the loss.
@@ -27,12 +27,12 @@ The plateau is **intrinsic to the classification head**, not a multi-task scale 
 
 ### 1. Loss balance — classification dominates (recomputed, exact)
 
-Using the test terms from `output-after-round1.txt` and the `1.0 / 2.0 / 1.5` term weights in `cnn/losses.py:53`:
+Using the test terms from `../round-1-mechanical-fixes/results.txt` and the `1.0 / 2.0 / 1.5` term weights in `cnn/losses.py:53`:
 
 ```
 total = obj + 2.0*cls + 1.5*box
       = 0.85905 + 2.0*1.05200 + 1.5*0.02214
-      = 2.99626   (output-after-round1.txt reports 2.99625 — match)
+      = 2.99626   (../round-1-mechanical-fixes/results.txt reports 2.99625 — match)
 ```
 
 Share of total loss:
@@ -47,7 +47,7 @@ Box regression is effectively solved (0.022 raw). Objectness is a near-fixed ~29
 
 ### 2. `class_w` anti-correlates with need
 
-`cnn/losses.py:26` → `class_w = [4.0, 0.6, 1.0, 6.5, 0.6]`, cross-referenced with the per-class recall in `output-after-round1.txt`:
+`cnn/losses.py:26` → `class_w = [4.0, 0.6, 1.0, 6.5, 0.6]`, cross-referenced with the per-class recall in `../round-1-mechanical-fixes/results.txt`:
 
 | Class | Precision | Recall | `class_w` | Verdict |
 |---|---|---|---|---|
@@ -61,7 +61,7 @@ The heaviest weights sit on classes that are already performing; the two collaps
 
 ### 3. "No accident" (class 0) is a real, active class — not dead weight
 
-Round 1 raised the possibility that `class_w[0]=4.0` was inert (classification loss only runs on `objectness==1` cells). **Refuted:** `dataset.py:97–123` writes `objectness=1` for every parsed label line including class 0, the confusion report (`models/conv.py:122–138`) only counts occupied cells, and `output-after-round1.txt` reports "No accident" at 84%/94% *within that report*. So class 0 genuinely competes inside the classification head, and its 4.0 weight actively biases predictions toward the easiest class — at the expense of Minor/Moderate.
+Round 1 raised the possibility that `class_w[0]=4.0` was inert (classification loss only runs on `objectness==1` cells). **Refuted:** `dataset.py:97–123` writes `objectness=1` for every parsed label line including class 0, the confusion report (`models/conv.py:122–138`) only counts occupied cells, and `../round-1-mechanical-fixes/results.txt` reports "No accident" at 84%/94% *within that report*. So class 0 genuinely competes inside the classification head, and its 4.0 weight actively biases predictions toward the easiest class — at the expense of Minor/Moderate.
 
 ### 4. Scheduler can strand training in a long down-swing (suspected)
 
@@ -73,7 +73,7 @@ Round 1 raised the possibility that `class_w[0]=4.0` was inert (classification l
 
 Both are gitignored and were not present in the analyzed checkout:
 
-- **`dataset/labels/{train,val}`** → no real class frequencies, occupied-cell counts, or train-set size. (Only known size: test = 1223 images per `output-after-round1.txt`, implying val/ ≈ 2446; train unknown.)
+- **`dataset/labels/{train,val}`** → no real class frequencies, occupied-cell counts, or train-set size. (Only known size: test = 1223 images per `../round-1-mechanical-fixes/results.txt`, implying val/ ≈ 2446; train unknown.)
 - **`training/accidentclassifier_history.pkl`** → no per-term train-vs-val curves, so **overfitting (widening gap) cannot be separated from data scarcity**, and the scheduler/early-stop suspicion cannot be confirmed.
 
 Per the "prove it from the curves first" discipline, AdamW and the scheduler change therefore remain *conditional* below rather than recommended outright.
