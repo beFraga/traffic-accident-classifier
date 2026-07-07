@@ -109,11 +109,9 @@ class TrafficGridDataset(Dataset):
         self.S = S
         self.num_classes = num_classes
         
-        # Resolve directories based on your layout
         self.img_dir = os.path.join(base_path, "images", split)
         self.label_dir = os.path.join(base_path, "labels", split)
         
-        # Grab all image files (handles jpg, jpeg, png)
         self.img_paths = sorted(
             glob.glob(os.path.join(self.img_dir, "*.jpg")) + 
             glob.glob(os.path.join(self.img_dir, "*.jpeg")) + 

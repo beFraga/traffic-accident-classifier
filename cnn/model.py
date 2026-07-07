@@ -165,18 +165,10 @@ class AccidentClassifier(BaseModel):
             neighbor_smoothing=self.params.get("neighbor_smoothing", 0.0),
         )
 
-        # Plain Adam. AdamW + weight_decay was tested (docs/round-3-adamw-and-ordinal-loss/results.txt,
-        # wd 1e-4 and 1e-2) and rejected: the classification train/val gap stayed
-        # frozen at ~+0.63 across a 100x decay range while accuracy trended down --
-        # the gap is a class-confusion ceiling, not L2-fixable overfit.
         self.optimizer = torch.optim.Adam(
             params=self.net.parameters(), lr=self.learning_rate
         )
 
-        # NOTE: use a single LR scheduler. Stacking StepLR + Cosine on the same
-        # optimizer compounds their effects, collapsing the LR toward eta_min and
-        # stalling training (looks like a validation plateau). Cosine warm restarts
-        # are kept for their periodic "kicks"; StepLR is left available to swap in.
         lr_cosine = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
             self.optimizer,
             T_0=15,
@@ -195,11 +187,7 @@ class AccidentClassifier(BaseModel):
 
             images = images.to(self.device)
             targets = targets.to(self.device)
-
-            # Mixup disabled: linearly blending detection-style targets (objectness,
-            # one-hot class, and bbox coords) produces fractional objectness and
-            # averaged boxes that point at neither object, injecting label noise.
-
+            
             predictions = self.net(images)
 
             loss = self.loss(predictions, targets)

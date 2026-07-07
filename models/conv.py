@@ -9,9 +9,8 @@ import time
 import yaml
 from pathlib import Path
 
-#import matplotlib
-#matplotlib.use("Agg")  # non-interactive: save plots to files so unattended/overnight runs never block on a GUI window
 import matplotlib.pyplot as plt
+from matplotlib import patches
 import numpy as np
 import torch.nn.functional as F
 from sklearn.metrics import confusion_matrix, classification_report
@@ -147,13 +146,18 @@ def run(dataset=None):
     count_loop = 0
     
     with torch.no_grad():
-        for images, targets in model.test_dataset:  # model.test_dataset is the test loader
+        for images, targets in model.test_dataset:
             count_loop += 1
             images = images.to(device)
             targets = targets.to(device)
             
             predictions = model.net(images)
             loss_dict = model.loss(predictions, targets)
+
+            img = images[0].detach()
+            pred = predictions[0].detach()
+
+            visualize_grid_predictions(img, pred, conf_threshold=0.5)
             
             for key in model.loss.key_names:
                 test_loss_numerics[key] += loss_dict[key].item()
@@ -260,6 +264,110 @@ def plot_traffic_confusion_matrix(model, loader, device, conf_threshold=0.5):
     plt.savefig(cm_path, dpi=110)
     plt.close()
     print(f"Saved confusion matrix → {cm_path}")
+
+def visualize_grid_predictions(image_tensor, network_output, conf_threshold=0.35):
+    """
+    Visualizes the 10 output channels over the image.
+    
+    Args:
+        image_tensor (Tensor): Input image of shape (3, H, W)
+        network_output (Tensor): Single network prediction of shape (7, 7, 10)
+        conf_threshold (float): Threshold to clear out background noise
+    """
+    # 1. Convert PyTorch image tensor to a plottable NumPy array (H, W, 3)
+    if isinstance(image_tensor, torch.Tensor):
+        # Denormalize if your loader normalizes images (uncomment if needed)
+        # image_tensor = image_tensor * 0.5 + 0.5 
+        img = image_tensor.permute(1, 2, 0).cpu().numpy()
+        img = np.clip(img, 0, 1)
+    else:
+        img = image_tensor
+
+    img_h, img_w, _ = img.shape
+    S = network_output.shape[0] # Usually 7
+    
+    # 2. Define distinct color coding for the 5 classification categories
+    class_names = ["No accident", "Minor", "Moderate", "Severe", "Totaled Vehicle"]
+    class_colors = {
+        0: "blue",      # No accident
+        1: "green",     # Minor
+        2: "orange",    # Moderate
+        3: "red",       # Severe
+        4: "purple"     # Totaled Vehicle
+    }
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.imshow(img)
+    
+    # Optional: Draw the 7x7 chess board grid lines so you can see cell boundaries
+    for i in range(1, S):
+        ax.axhline(y=(i * img_h / S), color='white', linestyle='--', alpha=0.3)
+        ax.axvline(x=(i * img_w / S), color='white', linestyle='--', alpha=0.3)
+
+    # 3. Step through all 49 grid cells (Windows)
+    for row in range(S):
+        for col in range(S):
+            # Isolate the 10 channels for this specific grid cell
+            cell_data = network_output[row, col]
+            
+            # --- CHANNEL 0: OBJECTNESS (Existence Gate) ---
+            obj_prob = torch.sigmoid(cell_data[0]).item()
+            
+            # If the cell doesn't think an accident is here, skip it!
+            if obj_prob < conf_threshold:
+                continue
+                
+            # --- CHANNELS 1 to 5: CLASSIFICATION (Color Selector) ---
+            class_logits = cell_data[1:6]
+            class_probs = F.softmax(class_logits, dim=-1)
+            pred_class_idx = torch.argmax(class_probs).item()
+            
+            box_color = class_colors[pred_class_idx]
+            label_text = f"{class_names[pred_class_idx]} ({obj_prob:.2f})"
+
+            # --- CHANNELS 6 to 9: REGRESSION (Box Geometry) ---
+            # Your network has no activation on the final layer, 
+            # so apply sigmoid to bound relative coordinates between 0 and 1
+            bx = torch.sigmoid(cell_data[6]).item()
+            by = torch.sigmoid(cell_data[7]).item()
+            bw = torch.sigmoid(cell_data[8]).item()
+            bh = torch.sigmoid(cell_data[9]).item()
+
+            # Decode Cell-Relative (x,y) to global Image Coordinates
+            # (col / S) finds the starting pixel of the cell, then we add the offset
+            center_x = ((col + bx) / S) * img_w
+            center_y = ((row + by) / S) * img_h
+            
+            # Decode Image-Relative (w,h) to absolute pixels
+            box_w = bw * img_w
+            box_h = bh * img_h
+
+            # Convert Box Center coordinates to Top-Left Corner for Matplotlib
+            xmin = center_x - (box_w / 2)
+            ymin = center_y - (box_h / 2)
+
+            # 4. Draw the Bounding Box
+            rect = patches.Rectangle(
+                (xmin, ymin), box_w, box_h, 
+                linewidth=2.5, edgecolor=box_color, facecolor='none'
+            )
+            ax.add_patch(rect)
+
+            # 5. Add text banner marking the cell responsible for this prediction
+            ax.text(
+                xmin, ymin - 5, label_text, 
+                color="white", weight="bold",
+                bbox=dict(facecolor=box_color, alpha=0.8, edgecolor='none', boxstyle='round,pad=0.2')
+            )
+            
+            # Draw a tiny dot at the exact center coordinates predicted by the cell
+            ax.plot(center_x, center_y, marker='o', color=box_color, markersize=5)
+
+    plt.title(f"Grid Detector Parsing Screen (Threshold: {conf_threshold})")
+    plt.axis('off')
+    plt.tight_layout()
+    plt.show()
+
 
 switch = {
     "train": train,
